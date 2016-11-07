@@ -572,8 +572,8 @@ class DirectView(View):
 
 
     @sync_results
-    def map(self, f, *sequences, **kwargs):
-        """``view.map(f, *sequences, block=self.block)`` => list|AsyncMapResult
+    def map(self, f, *sequences, **flags):
+        """``view.map(f, *sequences, **flags)`` => list|AsyncMapResult
 
         Parallel version of builtin `map`, using this View's `targets`.
 
@@ -591,6 +591,12 @@ class DirectView(View):
             the sequences to be distributed and passed to `f`
         block : bool
             whether to wait for the result or not [default self.block]
+        ordered : bool [default True]
+            Whether the results should be gathered as they arrive, or enforce
+            the order of submission.
+            
+            Only applies when iterating through AsyncMapResult as results arrive.
+            Has no effect when block=True.
 
         Returns
         -------
@@ -605,13 +611,8 @@ class DirectView(View):
             A list, the result of ``map(f,*sequences)``
         """
 
-        block = kwargs.pop('block', self.block)
-        for k in kwargs.keys():
-            if k not in ['block', 'track']:
-                raise TypeError("invalid keyword arg, %r"%k)
-
         assert len(sequences) > 0, "must have some sequences to map onto!"
-        pf = ParallelFunction(self, f, block=block, **kwargs)
+        pf = ParallelFunction(self, f, **flags)
         return pf.map(*sequences)
 
     @sync_results
@@ -1048,7 +1049,7 @@ class LoadBalancedView(View):
 
     @sync_results
     @save_ids
-    def map(self, f, *sequences, **kwargs):
+    def map(self, f, *sequences, **flags):
         """``view.map(f, *sequences, block=self.block, chunksize=1, ordered=True)`` => list|AsyncMapResult
 
         Parallel version of builtin `map`, load-balanced by this View.
@@ -1093,19 +1094,12 @@ class LoadBalancedView(View):
             A list, the result of ``map(f,*sequences)``
         """
 
-        # default
-        block = kwargs.get('block', self.block)
-        chunksize = kwargs.get('chunksize', 1)
-        ordered = kwargs.get('ordered', True)
-
-        keyset = set(kwargs.keys())
-        extra_keys = keyset.difference_update(set(['block', 'chunksize']))
-        if extra_keys:
-            raise TypeError("Invalid kwargs: %s"%list(extra_keys))
+        flags['chunksize'] = flags.get('chunksize', 1)
+        # set a default, since it is relevant here and ParallelFunction has none.
 
         assert len(sequences) > 0, "must have some sequences to map onto!"
 
-        pf = ParallelFunction(self, f, block=block, chunksize=chunksize, ordered=ordered)
+        pf = ParallelFunction(self, f, **flags)
         return pf.map(*sequences)
 
     def register_joblib_backend(self, name='ipyparallel', make_default=False):
